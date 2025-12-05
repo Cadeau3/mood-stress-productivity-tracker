@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mood, Stress & Productivity Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0e1620; --panel:rgba(255,255,255,0.04); --muted:#9aa4b2; --accent:#4ea3ff;
+      --accent2:#f3a261;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071021,#0e1620);font-family:Inter,system-ui,Arial;color:#fff}
+    .wrap{max-width:1100px;margin:18px auto;padding:18px}
+    header{display:flex;align-items:center;gap:12px}
+    h1{margin:0;font-size:20px}
+    .panel{background:var(--panel);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.04)}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:12px;margin-top:14px}
+    .form-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+    label{font-size:13px;color:var(--muted);min-width:80px}
+    input[type=date], input[type=number], select, textarea {background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff;padding:8px;border-radius:8px;min-height:36px}
+    textarea{min-height:72px;resize:vertical}
+    button{background:var(--accent);border:0;padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer}
+    .muted{color:var(--muted);font-size:13px}
+    #charts{display:grid;grid-template-columns:1fr 380px;gap:12px;margin-top:12px}
+    canvas{background:transparent;border-radius:8px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    td,th{padding:6px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+    .small{font-size:13px;color:var(--muted)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    @media(max-width:980px){ .grid{grid-template-columns:1fr} #charts{grid-template-columns:1fr} }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div style="width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#203a5a,#0e2740);display:flex;align-items:center;justify-content:center;font-weight:700">MSP</div>
+      <div>
+        <h1>Mood, Stress & Productivity Tracker</h1>
+        <div class="muted">Log daily mood, sleep, stress and productivity — visualize patterns and export insights.</div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <strong>New entry</strong>
+          <div class="form-row">
+            <label>Date</label>
+            <input id="date" type="date"/>
+          </div>
+          <div class="form-row">
+            <label>Mood (1–5)</label>
+            <input id="mood" type="number" min="1" max="5" value="4"/>
+          </div>
+          <div class="form-row">
+            <label>Sleep (hrs)</label>
+            <input id="sleep" type="number" min="0" max="24" step="0.1" value="7.5"/>
+          </div>
+          <div class="form-row">
+            <label>Stress (0–10)</label>
+            <input id="stress" type="number" min="0" max="10" value="3"/>
+          </div>
+          <div class="form-row">
+            <label>Productivity (hrs)</label>
+            <input id="productivity" type="number" min="0" max="24" step="0.1" value="4"/>
+          </div>
+          <div style="margin-top:8px">
+            <label class="small">Activities / short notes</label>
+            <textarea id="notes" placeholder="e.g., studied, exercised, social time"></textarea>
+          </div>
+          <div class="form-row" style="margin-top:10px">
+            <button id="addBtn">Add entry</button>
+            <button id="clearBtn" style="background:var(--accent2)">Clear all</button>
+            <button id="exportCSV">Export CSV</button>
+            <button id="exportPNG" style="background:#6ad17b">Export PNG</button>
+          </div>
+          <div class="small" style="margin-top:8px">Entries stored locally in this browser. You can edit or delete entries below.</div>
+        </div>
+
+        <div class="panel" style="margin-top:12px;max-height:360px;overflow:auto">
+          <strong>Entries</strong>
+          <table id="entriesTable" style="margin-top:8px">
+            <thead><tr><th>Date</th><th>Mood</th><th>Sleep</th><th>Stress</th><th>Prod</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div><!-- Right side: charts + insights -->
+      <div>
+        <div class="panel" id="charts">
+          <div>
+            <canvas id="moodLine"></canvas>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <div class="small">Avg mood: <span id="avgMood">—</span></div>
+              <div class="small">Best day: <span id="bestDay">—</span></div>
+              <div class="small">Entries: <span id="count">0</span></div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="panel" style="padding:8px">
+              <strong class="small">Sleep vs Mood</strong>
+              <canvas id="sleepMood" height="220"></canvas>
+            </div>
+
+            <div class="panel" style="padding:8px">
+              <strong class="small">Stress vs Productivity</strong>
+              <canvas id="stressProd" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <strong>Activity frequency</strong>
+          <div id="activityBarContainer" style="margin-top:8px">
+            <canvas id="activityBar"></canvas>
+          </div>
+          <div class="small" style="margin-top:8px">
+            Most common words from notes (basic tokenization).
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <strong>Insights</strong>
+          <div id="insights" class="small" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ========== Storage, Helpers, CSV Export ========== */
+
+const STORAGE_KEY = 'mood_tracker_entries_v1';
+
+let entries = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+
+function round2(x){ return Math.round(x*100)/100; }
+
+function entriesToCSV(rows){
+  const header = "date,mood,sleep,stress,productivity,notes";
+  const lines = rows.map(r => 
+    `${r.date},${r.mood},${r.sleep},${r.stress},${r.productivity},"${(r.notes||'').replace(/"/g,'""')}"`
+  );
+  return header + "\n" + lines.join("\n");
+}
+
+function downloadDataUrl(url, fileName){
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function nowISO(){
+  return new Date().toISOString().slice(0,10);
+}
+
+/* ========== Stats ========== */
+
+function mean(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : NaN; }
+
+function pearson(x,y){
+  if(x.length<2) return NaN;
+  const mx = mean(x), my = mean(y);
+  let num=0, denX=0, denY=0;
+  for(let i=0;i<x.length;i++){
+    const dx = x[i]-mx, dy = y[i]-my;
+    num += dx*dy;
+    denX += dx*dx;
+    denY += dy*dy;
+  }
+  return num / Math.sqrt(denX*denY);
+}
+
+function linearRegression(x,y){
+  if(x.length<2) return null;
+  const mx = mean(x), my = mean(y);
+  let num=0, den=0;
+  for(let i=0;i<x.length;i++){
+    num += (x[i]-mx)*(y[i]-my);
+    den += (x[i]-mx)**2;
+  }
+  const slope = num/den;
+  const intercept = my - slope*mx;
+  return { slope, intercept, predict:(xx)=>slope*xx+intercept };
+}
+
+/* ========== DOM Elements ========== */
+
+const dateInput = document.getElementById('date');
+const moodInput = document.getElementById('mood');
+const sleepInput = document.getElementById('sleep');
+const stressInput = document.getElementById('stress');
+const prodInput = document.getElementById('productivity');
+const notesInput = document.getElementById('notes');
+
+const avgMoodEl = document.getElementById('avgMood');
+const bestDayEl = document.getElementById('bestDay');
+const countEl = document.getElementById('count');
+const insightsEl = document.getElementById('insights');
+
+const entriesTableBody = document.querySelector('#entriesTable tbody');
+
+/* Charts */
+let moodLineChart, sleepMoodChart, stressProdChart, activityBarChart;
+
+/* ========== Initial Sample Data (only once) ========== */
+if(entries.length === 0){
+  for(let i=10;i>=0;i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    entries.push({
+      date: d.toISOString().slice(0,10),
+      mood: Math.round(2 + Math.random()*3),
+      sleep: round2(5 + Math.random()*4),
+      stress: Math.round(Math.random()*8),
+      productivity: round2(2 + Math.random()*5),
+      notes: Math.random()>0.5 ? "study rest" : "exercise social"
+    });
+  }
+  save();
+}
+
+/* ========== Rendering ========== */
+
+function sortedEntries(){
+  return entries.slice().sort((a,b)=> a.date.localeCompare(b.date));
+}
+
+function renderTable(){
+  entriesTableBody.innerHTML = "";
+  entries.slice().reverse().forEach((e, idxReversed) => {
+    const i = entries.length - 1 - idxReversed;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${e.date}</td>
+      <td>${e.mood}</td>
+      <td>${e.sleep}</td>
+      <td>${e.stress}</td>
+      <td>${e.productivity}</td>
+      <td style="text-align:right">
+        <button data-edit="${i}" style="background:transparent;color:#4ea3ff;border:0">Edit</button>
+        <button data-del="${i}" style="background:transparent;color:#f76c6c;border:0;margin-left:6px">Delete</button>
+      </td>
+    `;
+    entriesTableBody.appendChild(row);
+  });
+
+  /* Attach buttons */
+  entriesTableBody.querySelectorAll("[data-edit]").forEach(btn => {
+    btn.onclick = () => editEntry(+btn.dataset.edit);
+  });
+  entriesTableBody.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      if(confirm("Delete entry?")){
+        entries.splice(+btn.dataset.del,1);
+        save();
+        updateAll();
+      }
+    };
+  });
+}
+
+function renderCharts(){
+  const data = sortedEntries();
+  const labels = data.map(d=>d.date);
+
+  const moods = data.map(d=>d.mood);
+  const sleeps = data.map(d=>d.sleep);
+  const stresses = data.map(d=>d.stress);
+  const prods = data.map(d=>d.productivity);
+
+  /* Mood Line Chart */
+  if(moodLineChart) moodLineChart.destroy();
+  moodLineChart = new Chart(document.getElementById('moodLine'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Mood', data:moods, borderColor:'#4ea3ff', backgroundColor:'rgba(78,163,255,0.15)', tension:0.25, fill:true }
+    ]},
+    options:{ responsive:true, scales:{ y:{ min:0, max:5 } } }
+  });
+
+  /* Sleep vs Mood scatter */
+  if(sleepMoodChart) sleepMoodChart.destroy();
+  const reg = linearRegression(sleeps, moods);
+  const smData = data.map(d=>({x:d.sleep, y:d.mood}));
+  const smDatasets = [
+    { label:'Points', data:smData, backgroundColor:'#f3a261' }
+  ];
+  if(reg){
+    const xMin = Math.min(...sleeps), xMax = Math.max(...sleeps);
+    smDatasets.push({
+      type:'line',
+      label:'Fit',
+      data:[{x:xMin,y:reg.predict(xMin)}, {x:xMax,y:reg.predict(xMax)}],
+      borderColor:'#ffd18f',
+      pointRadius:0
+    });
+  }
+  sleepMoodChart = new Chart(document.getElementById('sleepMood'), {
+    type:'scatter',
+    data:{ datasets:smDatasets },
+    options:{ responsive:true,
+      scales:{ x:{ title:{display:true,text:'Sleep (hrs)'} },
+              y:{ title:{display:true,text:'Mood'}, min:0, max:5 } }
+    }
+  });
+
+  /* Stress vs Productivity */
+  if(stressProdChart) stressProdChart.destroy();
+  stressProdChart = new Chart(document.getElementById('stressProd'), {
+    type:'scatter',
+    data:{ datasets:[
+      { label:'Stress vs Productivity', data:data.map(d=>({x:d.stress,y:d.productivity})), backgroundColor:'#6ad17b' }
+    ]},
+    options:{ responsive:true,
+      scales:{ x:{ title:{display:true,text:'Stress'} },
+              y:{ title:{display:true,text:'Productivity (hrs)'} } }
+    }
+  });
+
+  /* Activity Frequency */
+  if(activityBarChart) activityBarChart.destroy();
+  const words = {};
+  data.forEach(d=>{
+    (d.notes||"").toLowerCase().split(/\s+/).forEach(w=>{
+      if(w) words[w] = (words[w]||0)+1;
+    });
+  });
+  const sortedWords = Object.entries(words).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  activityBarChart = new Chart(document.getElementById('activityBar'), {
+    type:'bar',
+    data:{ labels:sortedWords.map(w=>w[0]),
+           datasets:[{ label:'Count', data:sortedWords.map(w=>w[1]), backgroundColor:'#8ec5ff' }]},
+    options:{ responsive:true }
+  });
+
+  /* Summary numbers */
+  avgMoodEl.textContent = mean(moods).toFixed(2);
+  countEl.textContent = entries.length;
+
+  const best = data.reduce((best,e)=> e.mood>(best?.mood||0)? e:best , null);
+  bestDayEl.textContent = best ? best.date : "—";
+}
+
+/* ========== Insights ========== */
+
+function renderInsights(){
+  const data = sortedEntries();
+  if(data.length===0){
+    insightsEl.textContent = "No insights yet.";
+    return;
+  }
+
+  const moods = data.map(d=>d.mood);
+  const sleeps = data.map(d=>d.sleep);
+  const stresses = data.map(d=>d.stress);
+  const prods = data.map(d=>d.productivity);
+
+  const corrSleepMood = pearson(sleeps, moods);
+  const corrStressMood = pearson(stresses, moods);
+  const corrStressProd = pearson(stresses, prods);
+
+  const out = [];
+
+  if(!isNaN(corrSleepMood))
+    out.push(`Sleep ↔ Mood correlation: ${corrSleepMood.toFixed(2)} (positive means more sleep often matches higher mood).`);
+
+  if(!isNaN(corrStressMood))
+    out.push(`Stress ↔ Mood correlation: ${corrStressMood.toFixed(2)} (negative means stress often lowers mood).`);
+
+  if(!isNaN(corrStressProd))
+    out.push(`Stress ↔ Productivity correlation: ${corrStressProd.toFixed(2)}.`);
+
+  if(corrSleepMood > 0.25)
+    out.push("Insight: Higher sleep tends to match higher mood in your data.");
+  if(corrStressMood < -0.25)
+    out.push("Insight: Higher stress aligns with lower mood; consider rest on tense days.");
+
+  insightsEl.innerHTML = out.map(x=>`<div style="margin-bottom:6px">${x}</div>`).join("");
+}
+
+/* ========== Editing Entries ========== */
+
+function editEntry(i){
+  const e = entries[i];
+  dateInput.value = e.date;
+  moodInput.value = e.mood;
+  sleepInput.value = e.sleep;
+  stressInput.value = e.stress;
+  prodInput.value = e.productivity;
+  notesInput.value = e.notes || "";
+  entries.splice(i,1);
+  save();
+  updateAll();
+}
+
+/* ========== Add Entry ========== */
+
+document.getElementById('addBtn').onclick = ()=>{
+  const e = {
+    date: dateInput.value || nowISO(),
+    mood: Number(moodInput.value),
+    sleep: round2(Number(sleepInput.value)),
+    stress: Number(stressInput.value),
+    productivity: round2(Number(prodInput.value)),
+    notes: notesInput.value.trim()
+  };
+  entries.push(e);
+  save();
+  dateInput.value = nowISO();
+  notesInput.value = "";
+  updateAll();
+};
+
+/* ========== Clear All ========== */
+
+document.getElementById('clearBtn').onclick = ()=>{
+  if(confirm("Clear ALL entries?")){
+    entries = [];
+    save();
+    updateAll();
+  }
+};
+
+/* ========== Export CSV ========== */
+
+document.getElementById('exportCSV').onclick = ()=>{
+  const csv = entriesToCSV(entries);
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  downloadDataUrl(url, "mood_tracker.csv");
+  setTimeout(()=>URL.revokeObjectURL(url), 3000);
+};
+
+/* ========== Export PNG Snapshot ========== */
+
+async function chartToImg(chart){
+  const url = chart.toBase64Image();
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>resolve(img);
+    img.src = url;
+  });
+}
+
+document.getElementById('exportPNG').onclick = async ()=>{
+  const img1 = await chartToImg(moodLineChart);
+  const img2 = await chartToImg(sleepMoodChart);
+  const img3 = await chartToImg(stressProdChart);
+  const img4 = await chartToImg(activityBarChart);
+
+  const w=1200, h=1500;
+  const canvas = document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle="#071021";
+  ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle="#fff";
+  ctx.font="700 24px Inter";
+  ctx.fillText("Mood, Stress & Productivity Snapshot", 40, 50);
+
+  ctx.drawImage(img1, 40, 80, 1120, 260);
+  ctx.drawImage(img2, 40, 370, 540, 260);
+  ctx.drawImage(img3, 620, 370, 540, 260);
+  ctx.drawImage(img4, 40, 660, 1120, 260);
+
+  const url = canvas.toDataURL("image/png");
+  downloadDataUrl(url, "mood_snapshot.png");
+};
+
+/* ========== Init ========== */
+
+dateInput.value = nowISO();
+updateAll();
+
+</script>
+</body>
+</html>
